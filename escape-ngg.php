@@ -113,7 +113,7 @@ class Escape_NextGen_Gallery {
 
 		error_reporting( E_ALL );
 		ini_set( 'display_errors', 1 );
-		set_time_limit( 600 );
+		set_time_limit( 5000 );
 
 		$post_ids = $this->get_post_ids( $limit );
 		
