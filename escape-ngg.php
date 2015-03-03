@@ -259,7 +259,7 @@ class Escape_NextGen_Gallery {
 		$args = array(
 			's'           => '[nggallery',
 			'post_type'   => array( 'post', 'page' ),
-			'post_status' => 'any',
+			'post_status' => 'publish',
 			'nopaging'    => true,
 			'fields'      => 'ids',
 			'posts_per_page' => $limit
