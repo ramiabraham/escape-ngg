@@ -261,7 +261,7 @@ class Escape_NextGen_Gallery {
 			'post_type'   => array( 'post', 'page' ),
 			'post_status' => 'publish',
 			'fields'      => 'ids',
-			'posts_per_page' => $limit
+			'posts_per_page' => $limit,
 			'no_found_rows' => true,
 			'cache_results' => false
 		);
