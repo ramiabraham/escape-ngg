@@ -157,22 +157,13 @@ class Escape_NextGen_Gallery {
 		global $wpdb;
 		$post = get_post( $post_id );
 		$matches = null;
+		$attachment_ids = array();
 
 		preg_match( '#nggallery id(\s)*="?(\s)*(?P<id>\d+)#i', $post->post_content, $matches );
 		if ( ! isset( $matches['id'] ) ) {
 			$this->warnings[] = sprintf( "Could not match gallery id in %d", $post->ID );
 			return;
 		}
-
-		// If there are existing images attached the post, 
-		// let's remember to exclude them from our new gallery.
-		$existing_attachments_ids = get_posts( array(
-			'post_type' => 'attachment',
-			'post_status' => 'inherit',
-			'post_parent' => $post->ID,
-			'post_mime_type' => 'image',
-			'fields' => 'ids',
-		) );
 
 		$gallery_id = $matches['id'];
 		$path = $wpdb->get_row( "SELECT * FROM {$wpdb->prefix}ngg_gallery WHERE gid = ". intval( $gallery_id ), ARRAY_A  );
@@ -186,27 +177,18 @@ class Escape_NextGen_Gallery {
 		foreach ( $images as $image ) {
 			$url = home_url( trailingslashit( $path['path'] ) . $image->filename );
 			$url = apply_filters( 'engg_image_url', $url, $path['path'], $image->filename );
-			
 
-			// Let's use a hash trick here to find our attachment post after it's been sideloaded.
-			$hash = md5( 'attachment-hash' . $url . $image->description . time() . rand( 1, 999 ) );
 
-			$result = media_sideload_image( $url, $post->ID, $hash );
-			if ( is_wp_error( $result ) ) {
-				$this->warnings[] = sprintf( "Error loading %s: %s", $url, $result->get_error_message() );
+			$attch_id = $this->media_sideload_image( $url, $post->ID );
+
+			if ( is_wp_error( $attch_id ) ) {
+				$this->warnings[] = sprintf( "Error loading %s: %s", $url, $attch_id->get_error_message() );
 				continue;
-			} else {
-				$attachments = get_posts( array(
-					'post_parent' => $post->ID,
-					's' => $hash,
-					'post_type' => 'attachment',
-					'posts_per_page' => -1,
-				) );
+			}
 
-				if ( ! $attachments || ! is_array( $attachments ) || count( $attachments ) != 1 ) {
-					$this->warnings[] = sprintf( "Could not insert attachment for %d", $post->ID );
-					continue;
-				}
+			if ( false === $attch_id ) {
+				$this->warnings[] = sprintf( "Could not insert attachment for %d", $post->ID );
+				continue;
 			}
 
 			// Titles should fallback to the filename.
@@ -214,7 +196,7 @@ class Escape_NextGen_Gallery {
 				$image->alttext = $image->filename;
 			}
 
-			$attachment = $attachments[0];
+			$attachment = get_post( $attch_id );
 			$attachment->post_title = $image->alttext;
 			$attachment->post_content = $image->description;
 			$attachment->menu_order = $image->sortorder;
@@ -223,6 +205,8 @@ class Escape_NextGen_Gallery {
 
 			wp_update_post( $attachment );
 			$this->images_count++;
+			$attachment_ids[] = $attch_id;
+
 			$this->infos[] = sprintf( "Added attachment for %d", $post->ID );
 		}
 
@@ -233,8 +217,8 @@ class Escape_NextGen_Gallery {
 
 		// Construct the [gallery] shortcode
 		$attr = array();
-		if ( $existing_attachments_ids )
-			$attr['exclude'] = implode( ',', $existing_attachments_ids );
+		if ( $attachment_ids )
+			$attr['ids'] = implode( ',', $attachment_ids );
 
 		$gallery = '[gallery';
 		foreach ( $attr as $key => $value )
@@ -250,10 +234,40 @@ class Escape_NextGen_Gallery {
 		$this->infos[] = sprintf( "Updated post %d", $post->ID );	
 	}
 
+	public function media_sideload_image( $file, $post_id, $desc = null ) {
+		if ( ! empty( $file ) ) {
+			// Set variables for storage, fix file filename for query strings.
+			preg_match( '/[^\?]+\.(jpe?g|jpe|gif|png)\b/i', $file, $matches );
+			$file_array = array();
+			$file_array['name'] = basename( $matches[0] );
+
+			// Download file to temp location.
+			$file_array['tmp_name'] = download_url( $file );
+
+			// If error storing temporarily, return the error.
+			if ( is_wp_error( $file_array['tmp_name'] ) ) {
+				return $file_array['tmp_name'];
+			}
+
+			// Do the validation and storage stuff.
+			$id = media_handle_sideload( $file_array, $post_id, $desc );
+
+			// If error storing permanently, unlink.
+			if ( is_wp_error( $id ) ) {
+				@unlink( $file_array['tmp_name'] );
+				return $id;
+			}
+
+			return $id;
+		}
+
+		return false;
+	}
+
 	/**
 	 * @param int $limit How many posts to get
 	 *
-	 * @return void
+	 * @return array $posts Array of posts IDs.
 	 **/
 	public function get_post_ids( $limit = -1 ) {
 		$args = array(
