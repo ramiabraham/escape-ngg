@@ -260,9 +260,10 @@ class Escape_NextGen_Gallery {
 			's'           => '[nggallery',
 			'post_type'   => array( 'post', 'page' ),
 			'post_status' => 'publish',
-			'nopaging'    => true,
 			'fields'      => 'ids',
 			'posts_per_page' => $limit
+			'no_found_rows' => true,
+			'cache_results' => false
 		);
 		
 		$args = apply_filters( 'escape_ngg_query_args', $args );
